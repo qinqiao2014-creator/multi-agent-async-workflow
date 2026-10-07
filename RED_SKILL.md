@@ -2,7 +2,7 @@
 
 > 用途：小红书 Red Skill 上传表单的填表文案，以及任何对外平台（公众号 / 即刻 / 朋友圈）的介绍素材。
 > 仓库里的 README.md 是 GitHub 技术文档视角，SKILL.md 是给 agent 读的协议，**都不是给人看的对外文案**——对外一律用本文件。
-> 最后更新：2026-09-02（按用户实际操作方式修正了「怎么用」段）
+> 最后更新：2026-10-07（标签口径同步为 14 个 = 11 状态 + 3 来源；原写「9 个标签」为来源标签引入前的旧口径）
 
 ---
 
@@ -44,7 +44,7 @@
 
 ### 怎么用
 
-先准备一个 GitHub 仓库当总线，里面要有这 9 个标签：backlog / ready / in_progress / needs-review / approved / done / needs-lead / blocked / needs-human。开工前 skill 会自己检查，缺了会告诉你去补。
+先准备一个 GitHub 仓库当总线。开工前 skill 会自己检查标签，缺了会自己建。需要的标签一共 14 个：11 个状态标签 backlog / ready / in_progress / needs-review / approved / done / needs-research / needs-clarification / blocked / needs-lead / needs-human，加 3 个来源标签 source:human / source:ai / human-only。
 
 然后把 skill 甩给 agent：
 
@@ -64,6 +64,6 @@
 
 1. **三处术语是 README 原话内核，不要改成更"好看"的词**：「状态即通知」「不能审自己写的代码」「空上下文不是缺陷，是它唯一的资产」。
 2. **视角铁律**：对外文案一律从「平台用户装完即用」写，不要掺 `references/setup.md` 的 clone / 配环境视角。受众分三种——开发者（配环境）、平台用户（装完即用）、终端消费者，搞错视角 = 文案作废。
-3. **硬前提必须前置**：GitHub 仓库 + 9 个标签。这是跑起来的必要条件，不写清楚用户装完跑不动会懵。
+3. **硬前提必须前置**：GitHub 仓库 + 14 个标签。这是跑起来的必要条件，不写清楚用户装完跑不动会懵。
 4. **「每个 agent 都要自己读一遍 skill」不能省**：这是独立 session 设计的直接后果，也是最容易被人误解成"麻烦"的地方，讲清楚它反而成了卖点。
 5. 贡献者署名（群友zzszmyf）未写入正文，需要时加在结尾。
