@@ -4,9 +4,7 @@
 
 ## 核心模式
 
-**Issue 在这里不是 bug tracker，是跨 session 的持久化消息队列。**
-
-每个节点只关心自己负责的状态转换。节点之间不共享上下文、不互相调用、不需要中心调度器，它们只做一件事：看队列 → 认领 → 处理 → 流转状态 → 再看。
+每个节点只关心自己负责的状态转换，节点之间不共享上下文、不互相调用、不需要中心调度器：
 
 ```
 backlog → ready → in_progress → needs-review → approved → done
@@ -80,6 +78,8 @@ Reviewer 的输入 = PR diff + 反查到的 Issue，足够独立判定「是否�
 | 可并发 | N 个 Executor 各开各的分支，互不覆盖 |
 
 ## 流水线拓扑
+
+![Topology Patterns](../assets/topology-patterns.svg)
 
 ### 线性
 ```

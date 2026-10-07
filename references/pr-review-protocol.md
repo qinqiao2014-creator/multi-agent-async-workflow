@@ -1,53 +1,27 @@
 # 交付与审核闭环：Issue → PR → Review
 
-这一章回答三个具体问题：**Executor 干完活交付什么？谁来审？上下文怎么过去？**
-答案分别是：**PR、独立的 Reviewer 节点、靠工件（Issue ↔ PR 双向关联）而不是靠共享 session。**
+Executor 交付 PR，Reviewer 独立审，上下文靠工件（Issue ↔ PR 双向关联）传递而非共享 session。
 
-## 1. Executor 的交付物只能是 PR
+> **节点每轮的操作规则（扫什么、做什么、禁止什么）见 `SKILL.md` 对应角色章节。**
+> 本文件只写那些「不需要每轮读、但判不清楚时要用」的细则。
 
-不是在 Issue 里贴 diff，不是直接推 main，不是"我改完了你去看代码"。
+## 1. PR 的硬性要求
 
-| 为什么必须是 PR | 说明 |
-|----------------|------|
-| 可审核 | diff 有明确边界，Reviewer 知道审什么，不用猜哪些改动属于这个任务 |
-| 可自动化 | CI 天然挂在 PR 上，跑绿了才轮到 Reviewer，省一道人（机）力 |
-| 可回滚 | 一个 PR 一个 squash commit，出事直接 revert，不用考古 |
-| 可关联 | PR 原生关联 Issue、Commit、CI、Review 记录，这些就是上下文本身 |
-| 可并发 | N 个 Executor 各开各的分支，互不覆盖 |
+- **body 必须写 `Closes #<issue>`**（或 `Refs #<issue>`，视是否终结该 Issue）。这一行不是礼貌，是**寻址**——Reviewer 靠它反查任务契约，缺了它 PR 就是一堆无从判定对错的 diff。
+- **分支命名**：`<node>/<issue-number>-<slug>`，例 `executor-a/128-fix-retry-backoff`。从分支名就能看出「谁、为哪个 Issue、做什么」，扫队列时不用打开就能分流。
+- **收尾两件事缺一不可**：开 PR + 回 Issue comment `✅ 已提交 PR #N` 并把标签从 `in_progress` 换成 `needs-review`。只开 PR 不换标签，Reviewer 的 loop 扫不到，任务静默死掉。
 
-**硬性要求：PR body 必须写 `Closes #<issue>`（或 `Refs #<issue>`，视是否终结该 Issue）。**
-这一行不是礼貌，是**寻址**——Reviewer 靠它反查任务契约，缺了它 PR 就是一堆无从判定对错的 diff。
+## 2. 审核独立性
 
-分支命名建议：`<node>/<issue-number>-<slug>`，例：`executor-a/128-fix-retry-backoff`。
-从分支名就能看出「谁、为哪个 Issue、做什么」，扫队列时不用打开就能分流。
+**唯一的硬红线：不能审、不能合并自己写的代码。**
 
-Executor 完成后要做两件事，缺一不可：
-
-1. 开 PR，body 里 `Closes #128`
-2. 回到 Issue #128 comment `✅ 已提交 PR #256`，并把标签从 `in_progress` 换成 `needs-review`
-
-第 2 步是给总线发信号。只开 PR 不换标签，Reviewer 的 loop 扫不到，任务就静默死掉了。
-
-## 2. Review 交给独立的 Reviewer Agent 实例
-
-面对"B 提完 PR 之后谁管"，有几种做法，取舍如下：
-
-| 做法 | 判断 | 理由 |
-|------|------|------|
-| **A（Planner）兼任 Reviewer** | ✅ **允许，且是小规模下的默认** | A 没写这段代码，独立性成立；A 写了验收标准，反而最有资格判断标准是否被满足。这就是「总负责人」模式 |
-| **B（Executor）审自己的 PR** | ❌ **唯一的硬红线** | 代码作者已被自己的推理链说服，会把自己的假设当前提，抓不到自己的错 |
-| **用完即弃 A** | ❌ | A 是常驻 producer，它的 loop 跟这个 PR 的命运无关。"用完即弃"是把 session 当上下文容器的旧思路——上下文在 Issue 里，不在 A 的会话里 |
-| **在 A 的 Issue 里指定要 review 的 PR** | ⚠️ 部分 | 作为**寻址信息**是对的（Issue 里写清"完成后打 `needs-review`，PR 关联本 Issue"），但审核动作要由实际承担 Reviewer 角色的节点做，不是靠 Issue 描述遥控 |
-| **拆出独立的 C（Reviewer）** | ✅ 规模化时的优化 | 想要跨模型交叉验证（同模型容易犯同样的错），或总负责人成了吞吐瓶颈时拆 |
-| **开一个 agent team 共享 A/B/C 上下文，由人来 review 这个 team** | ❌ 作默认方案 | 见下节。共享上下文会杀死审核独立性；但它可以作为**单个节点内部**的实现方式 |
-
-> **不要把「不能自审」外推成「规格作者不能审」。** 前者约束的是代码作者，因为它继承了实现的盲区；后者是不同的事——没人再检查「验收标准本身定得对吗」，但那不是 code review 的职责，而是人和队列指标该管的。把它写成硬禁令的后果是：只有 1 个 lead + N 个 Executor 时没人能合并，流水线直接死锁。
+它约束的是**代码作者**（继承了实现的盲区），不是**规格作者**——把它外推成「定规格的人不能审」会让「1 个 lead + N 个 Executor」这种最常见配置直接死锁，没人能合并任何 PR。
 
 ### 同一 GitHub 账号下的审核记录
 
 用户可以用同一个 GitHub 账号控制多个 Agent。是否独立按**被任命的 Agent 实例**判断，不按 GitHub 登录名判断；同一实例仍不能审核或合并自己的代码。
 
-当 GitHub 拒绝同账号的原生 approval/request-changes 时，PR 评论和 Issue 标签就是正式记录：
+GitHub 拒绝同账号的原生 approval/request-changes 时，PR 评论 + Issue 标签就是正式记录：
 
 ```markdown
 审核主体：Reviewer-A
@@ -55,72 +29,35 @@ Executor 完成后要做两件事，缺一不可：
 👍 审核通过，可以合并
 ```
 
-或：
-
-```markdown
-审核主体：Reviewer-A
-实现主体：Executor-B
-🚫 打回（第 1 次）：`path/file.ext:42` ...
-```
-
 原生 GitHub review 在可用时可以叠加使用，但不是协议的必要条件。
 
-### 合并权归总负责人
-
-Executor 提 PR，但对合并没有决定权。由总负责人决定**哪些 PR 能进、按什么顺序进、是否只择取部分内容**（基于已废弃架构的 PR 即使代码没错也不该合；旧 PR 里有可复用的东西，应该关掉它并开新 Issue 指明「从 PR #N 摘取 xxx」）。多个 PR 文件范围重叠时由总负责人裁决先后，不要让 Executor 自行协商——它们互相看不见彼此的上下文。
-
-### Reviewer 的判定边界
-
-C 只做一件事：**对着 Issue 的验收标准、涉及范围和非目标逐条判 PR。** 逐个检查变更文件：文件必须属于 Issue 的范围，内容不得落入明确禁止事项；发现越界实现时，要求从 PR 删除或另开 Issue 承接，不把未授权内容作为“额外完成”放行。
-
-- 满足 → `👍 审核通过，可以合并` → Issue 从 `needs-review` 转为 `approved`
-- 不满足 → `🚫 打回：<具体到文件和行的问题>` → Issue 退回 `in_progress`，PR 保持 open
-- 想扩大范围 → **不准在 review 里加**。回 A 开新 Issue，本 PR 该过就过
-
-最后一条是最容易破的。Reviewer 一旦开始加需求，PR 就永远合不进去，Executor 陷入无限修改——这是审核侧最常见的失控形态。
-
-但判据不是「验收标准里有没有写」，而是**问题在不在这个 diff 里**：
-
-| 情况 | 是否可以打回 |
-|------|-------------|
-| diff 内部的正确性问题、回归、明显的安全/资源缺陷 | ✅ 合法，**即使验收标准没提** |
-| 想让这个 PR 多做一件事（新功能、顺手重构、覆盖新场景） | ❌ 不合法，回 A 开新 Issue |
-
-一句话：**可以拒收坏的实现，不可以扩大要求。**
-
-这个区分很重要——只按验收标准逐条打勾的 Reviewer 会放过 A 当初没预料到的真 bug，而那恰恰是独立 review 最该抓的东西。
-
-### 审核增量 diff 的寻址规范（rebase 后必须改口径）
+## 3. 审核增量 diff 的寻址规范（rebase 后必须改口径）
 
 打回后 Executor 追加修复，Reviewer 要审「**这次修了什么**」，不是重审整个 PR。报增量范围时有个**必踩的坑**：
 
 | 场景 | 错误写法 | 正确写法 |
 |------|---------|---------|
 | Executor 在旧 head 上**追加 commit**（未 rebase） | — | `旧head..新head` ✅ |
-| Executor **rebase 到新 main 后再追加 commit** | `旧head..新head` ❌ | `rebase后的原commit..新head` ✅ |
+| Executor **rebase 到新 main 后**再追加 commit | `旧head..新head` ❌ | `rebase后的原commit..新head` ✅ |
 
 **原因**：rebase 会重写历史，**旧 head 不再是新 head 的祖先**。此时 `旧head..新head` 变成「两个分叉点的对称差」，会把 main 上**别人的合并**全算进来——文件数虚高、看着像夹带无关改动，实际上一次都没碰过。
 
-**两条落地规则**：
+**落地规则**
 
-1. **Executor 报增量时**：先 `git log --oneline` 确认 `新head^`（父 commit）是什么，用 **`父commit..新head`**；不要凭记忆写旧 head。
-2. **Reviewer 见范围异常时**：不要直接判「夹带」，先自己跑 `git diff --name-status <可疑范围>` 与 `git show --stat <head>` 对照——**以 `git show --stat HEAD`（单个 commit 的真实改动）为准**，它是唯一不受 rebase 影响的口径。
+1. **Executor 报增量时**：先 `git log --oneline` 确认父 commit 是什么，用 **`父commit..新head`**；不要凭记忆写旧 head。
+2. **Reviewer 见范围异常时**：不要直接判「夹带」，先自己跑 `git diff --name-status <可疑范围>` 与 `git show --stat <head>` 对照——**以 `git show --stat HEAD` 为准**，它是唯一不受 rebase 影响的口径。
 3. **Executor 若明确 rebase 过**，应在 PR 评论里直接给出父 commit 哈希，省掉 Reviewer 一次猜。
 
-**另一个常见口径混淆**（Reviewer 也要分清）：
-
-| 命令 | 含义 | 是否适合判「本次修复」 |
-|------|------|----------------------|
+| 命令 | 含义 | 适合判「本次修复」 |
+|------|------|------------------|
 | `git show --stat HEAD` | 仅该 commit | ✅ 最准 |
 | `父commit..HEAD` | 本次修复（含该 commit） | ✅ 准 |
 | `main...HEAD` | 整条分支（原功能 + 修复） | ❌ 文件集合可能相同但行数含原功能 |
 | `旧head..新head`（rebase 后） | 混入 main 演进 | ❌ 完全错 |
 
-> 实测教训（2026-09-23）：rebase 后误报 `ac220b3..10e9a4c`，显示 10 文件；
-> 真实修复增量是 `dc2a256..10e9a4c` 的 **5 文件 / +30 −7**。同一轮里 Reviewer 也把文件数数成了 7（实际 5）
-> ⇒ **双方都要以 `git show --stat` 为准，而不是各自口算范围。**
+> 实测教训（2026-09-23）：rebase 后误报 `ac220b3..10e9a4c`，显示 10 文件；真实修复增量是 `dc2a256..10e9a4c` 的 **5 文件 / +30 −7**。同一轮 Reviewer 也把文件数数成了 7（实际 5）⇒ **双方都要以 `git show --stat` 为准，不要各自口算范围。**
 
-## 3. 打回环与升级
+## 4. 打回环与升级
 
 ```
 B: PR #256 ──→ C: review
@@ -131,72 +68,26 @@ B: PR #256 ──→ C: review
 
 B 不需要"被通知"。它的 loop 本来就在扫「assignee 是我 且 `in_progress`」的 Issue，被打回的任务自然回到它的视野里。这就是总线相对于消息传递的好处：**状态本身就是通知。**
 
-**必须设升级阈值：同一个 PR 被打回 2 次后，打 `needs-lead` 交总负责人裁决。**
-没有这个阈值，B 和 C 会在「我觉得可以了 / 我觉得还不行」之间无限对打，烧掉大量 token 且不收敛。两次之后说明分歧在标准本身，而标准是总负责人的职责，不是 B/C 能谈出来的。
+**必须设升级阈值：同一个 PR 被打回 2 次后打 `needs-lead`，交总负责人裁决。** 没有这个阈值，B 和 C 会在「我觉得可以了 / 我觉得还不行」之间无限对打，烧掉大量 token 且不收敛。两次之后说明分歧在标准本身，而标准是总负责人的职责。
 
-注意区分两种升级：分歧在**规格 / 优先级 / 技术方案** → `needs-lead`，总负责人自己就能拍板；涉及**花钱、对外承诺、法律权限、业务方向、拿不到的外部信息** → `needs-human`，必须到真人。合成一个标签会导致本该一句话解决的分歧堆着等人。
+## 5. 集成前的新鲜度与最终收尾
 
-### Reviewer 可以质疑规格，但方向是向上
-
-认为验收标准本身定错了（不是不够细，是方向错）→ comment 说明 + `needs-lead` 交总负责人。**不要把这个判断压给 Executor**——它只负责符合规格，改规格不在它的权限内。这是「不准扩大要求」的例外：往上提规格问题合法，往下加需求不合法。
-
-这条权力在总负责人兼任 Reviewer 时会自动失效（自己质疑自己的规格没有意义），所以它是**任命独立 Reviewer 的主要收益之一**。
-
-## 4. 为什么这个场景必须用多智能体架构
-
-有人会问：既然 A、B、C 要协作，为什么不开一个共享上下文的 agent team，让人来 review 整个 team 的产出？
-
-因为**审核的价值来自独立性，而共享上下文恰好摧毁独立性。**
-
-一个继承了 B 全部上下文的 reviewer，已经读过 B 的推理链并且被它说服了。它会把 B 的假设当作前提，把 B 的取舍当作既定事实——**它抓不到 B 的错，因为 B 的错就在它自己的前提里。**
-C 的空上下文不是缺陷，是它唯一的资产：C 只能看见 PR 里真实存在的东西，而不是 B 声称它做了什么。
-
-其余几条同向的理由：
-
-| 维度 | 共享上下文的 agent team | Issue 总线上的独立节点 |
-|------|------------------------|----------------------|
-| 审核独立性 | 无——reviewer 继承实施者的盲区 | 强——只看工件，不看过程 |
-| 规模上限 | 一个上下文窗口就是天花板 | 无界，Issue 数量不受窗口限制 |
-| 崩溃恢复 | session 挂了上下文全丢 | Issue/PR 都在盘上，换个节点接着做 |
-| 并发 | 内部本质是串行对话 | N 个 Executor 真并行 |
-| 模型异构 | 通常同一个模型 | 每个节点可用不同模型；换厂商做 review 能交叉出同模型的共同错法 |
-| 可审计 | 埋在会话记录里 | 每一步都是 Issue comment / PR review，可回溯可统计 |
-| 人的位置 | 人 review 每一份产出 | 人 review 这套协议和队列健康度 |
-
-最后一行才是真正的收益：**人不该 review 每个 PR，人该 review 这套系统。**
-看的是吞吐（每天流转多少 Issue）、打回率（C 打回占比，太高说明 A 的 Issue 写得糙，太低说明 C 在放水）、`blocked` 堆积（哪里断流）、升级频次（哪类分歧反复出现）。指标异常时，改的是 Issue 模板和节点 prompt，不是某个 PR。
-
-### agent team 什么时候反而合适
-
-强耦合、一次性、需要高频来回的探索——比如「这个偶发 bug 到底在哪」，拆成 Issue 的成本高于收益。
-
-这时正确的位置是：**agent team 作为某一个节点的内部实现**（比如 Researcher 内部开一个 team 去定位），对总线仍然只暴露一个结论 comment。团队在节点内，协议在节点间。
-
-## 5. PR 模板
-
-见 `../assets/pr-template.md`。要点只有三个：关联哪个 Issue、验收标准逐条自检、明确说了什么没做（防止 Reviewer 把未做项当遗漏）。
-
-## 6. 集成前的新鲜度与最终收尾
-
-Integrator 处理 `approved`，而不是 Reviewer 通过后直接关闭 Issue。合并前必须执行以下新鲜度闸门：
+Integrator 处理 `approved`，而不是 Reviewer 通过后直接关闭 Issue。合并前必须过新鲜度闸门：
 
 1. 拉取 `main`，记录当前 `main` SHA 和 PR head SHA。
 2. 通过 GitHub CLI/API 查询 PR 的 `baseRefOid`、`headRefOid`、`mergeable`、`mergeStateStatus` 和 CI；只有 `mergeable = MERGEABLE` 且状态为 clean 才能继续。
 3. 若 `main` 在 PR 创建或审核后前进，要求 Executor 更新分支；在更新后的分支或合并结果上运行受影响验证。
-4. 无法读取 GitHub API 状态时不得宣称 PR 可安全合并；仅有 SSH refs 只能用于观察提交，不能代替 mergeable/CI 检查。
+4. 无法读取 GitHub API 状态时不得宣称 PR 可安全合并；仅有 SSH refs 只能用于观察提交，**不能代替 mergeable/CI 检查**。
 
-合并后必须重新拉取 `main`，确认 PR 已 merged，再在 `main` 上执行规定验证；在 Issue 留下合并前 `main` SHA、PR head SHA、合并后的 main commit SHA、验证命令和结果。最后移除活动标签并添加 `done`。只有这一步完成，交付才真正结束。
+合并后必须重新拉取 `main`，确认 PR 已 merged，再在 `main` 上执行规定验证；在 Issue 留下合并前 `main` SHA、PR head SHA、合并后的 main commit SHA、验证命令和结果。最后移除活动标签并添加 `done`。**只有这一步完成，交付才真正结束。**
 
-## 7. shared invariant 的传播与累计门禁
+## 6. 传播门禁的位置
 
-PR 改变 shared invariant 或前序基线时，普通的 `Issue -> PR -> review` 不足以证明可合并。总负责人必须按 `dependency-propagation.md` 从 open、closed 和 `done` Issue 中反向枚举全部直接/间接依赖、关联 open PR、已交付 artifact 和受影响组件。
+依赖传播的完整协议在 `dependency-propagation.md`，本文件不复述。两边各自要执行的检查点：
 
-Reviewer 在批准前逐项确认：
+- **Reviewer 批准前**：源 shared-invariant PR 的影响面已可靠枚举、每个目标都有矩阵行且无 `unknown`；下游 PR 的对应行必须为 `synced` 或获批 `not-applicable`，且 head 已含上游修复并重跑累计 gate。
+- **Integrator 合并前**：再执行一遍同一检查。**即使下游 PR 的 CI 为绿，也不得绕过传播门禁。**
 
-1. PR 记录精确的 base/head/build artifact 身份，证据属于当前 head，而不是历史候选。
-2. Issue 的累计 inherited gates 包含所有仍适用的直接和间接上游 gate。
-3. 传播矩阵覆盖所有受影响下游，包括 closed / `done` 的已交付 artifact、在施工 Issue 和关联 open PR；每行记录依赖路径、阻断前状态、当前 artifact、gate、证据和同步状态。
-4. 审核源 shared-invariant PR 时，确认影响面已可靠枚举、每个目标都有矩阵行且不存在 `unknown`。满足后源 PR 可按自身验收批准和合并，下游行允许为 `pending`，不得因下游尚未同步反向阻塞源修复。
-5. 审核下游 PR 时，其对应行必须为 `synced` 或由总负责人批准的 `not-applicable`；下游 head 必须包含上游修复并重跑累计 gate。只写“应该不受影响”不能解除阻断。
+## 7. PR 模板
 
-任何下游目标仍为 `pending/unknown` 时，只阻断该目标及其下游 PR：先在矩阵记录阻断前状态，再移除其他活动标签并置 `blocked`。Integrator 必须再次执行同一检查；即使该下游 PR CI 为绿，也不得绕过传播门禁。某个目标行一达到 `synced` 或获批 `not-applicable`，就立即只恢复该行记录的阻断前状态，不等待其他目标；记录缺失、非法或已经过期时转 `needs-lead`，不得猜测。所有行完成后的 source 汇总仅关闭传播任务，不承担批量解除。
+见 `../assets/pr-template.md`。要点只有三个：关联哪个 Issue、验收标准逐条自检、明确说了什么没做（防止 Reviewer 把未做项当遗漏）。

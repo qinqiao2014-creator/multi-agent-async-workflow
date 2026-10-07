@@ -25,9 +25,7 @@ gh label create human-only         --color 1D76DB --description "执行到此需
 
 `needs-lead` 和 `needs-human` **必须分开**：前者总负责人自己就能拍板，后者必须到真人。合成一个的后果是两头都错——本该一句话解决的分歧堆着等真人，或者 AI 替你决定了它不该决定的事。
 
-后 3 个是**来源标签**，回答「任务是谁提的、该谁执行」：`source:human` 与 `human-only` 的任务，**Agent 认领前必须先经人类确认**，并明确告知人类「这项需要人类来完成接活与验收」（人类接活、人类验收，Agent 不能替人类拍板）；`source:ai` 的任务由 Agent 认领、交叉审核。`human-only` 是**叠加约束**（与 `source:*` 并列），表示 Agent 可认领推进，但执行到涉及审美/价值观/主观判断的环节必须转交人类拍板（**它不是「禁止认领」**）。
-
-> ⚠️ **`ready` 是中性标签**（「待认领」），**不区分认领者是人还是 Agent** ⇒ Agent 不要只看 `ready` 就伸手，必须同时看 `source:*`。
+后 3 个是**来源标签**（回答「任务是谁提的、该谁执行」），语义与认领规则见 `SKILL.md`「任务来源与执行者」。
 
 ## 3. 放模板到 GitHub 认的位置
 
@@ -49,16 +47,16 @@ labels: backlog
 ---
 ```
 
-## 4. 建立审核独立性与任命记录（关键）
+## 4. 建立审核独立性与任命记录
 
 「实施者不能批自己的 PR」如果只写在 prompt 里，就只是自觉。让它变成硬约束：
 
-1. **按 Agent 实例任命角色**：用户可以让多个 Agent 共用一个 GitHub 账号。每个可执行 Issue 记录 `指定执行者`、`审核负责人`、`集成负责人`；这些字段写 Agent 实例名，不写 GitHub 用户名。
-2. **禁止同一 Agent 实例审核或合并自己的实现**：GitHub 账号相同不代表自审，代码作者才是边界。
-3. **同账号模式用工件留痕**：GitHub 可能不允许同账号发原生 approval/request-changes；Reviewer 用 PR 评论写明审核主体和结论，Issue 标签按 `needs-review -> approved -> done` 流转。
-4. **branch protection 是可选增强**：有独立 GitHub 身份时，可要求 approval、CI 和禁止 force push；共用账号时不能把原生 approval 作为协议的必经条件，仍必须要求 CI 和禁止直接推送 main。
+1. **按 Agent 实例任命角色**：用户可以让多个 Agent 共用一个 GitHub 账号。每个可执行 Issue 记录 `指定执行者`、`审核负责人`、`集成负责人`，写 **Agent 实例名**而不是 GitHub 用户名。
+2. **禁止同一 Agent 实例审核或合并自己的实现**：账号相同不代表自审，**代码作者才是边界**。
+3. **同账号模式用工件留痕**：GitHub 可能不允许同账号发原生 approval/request-changes；Reviewer 用 PR 评论写明审核主体和结论，标签按 `needs-review -> approved -> done` 流转。
+4. **branch protection 是可选增强**：有独立身份时可要求 approval、CI、禁止 force push；共用账号时不能把原生 approval 作为必经条件，但仍必须要求 CI 和禁止直接推 main。
 
-工件中的任命、评论、标签和 main 验证共同形成可追溯闭环；GitHub 身份只是可选的额外门禁。
+任命、评论、标签和 main 验证共同形成可追溯闭环；GitHub 身份只是可选的额外门禁。
 
 ## 5. 编排节点
 
@@ -72,7 +70,7 @@ labels: backlog
 
 最小可用配置就是 **1 个总负责人 + 1 个 Executor**。Researcher / 独立 Reviewer 在需要时再加。
 
-真人是必需的，但只在两处投入：**① 底层框架期逐项验收骨架**（框架的错会被每个后续任务继承，且抽查结果发现不了）；**② 框架通过后只看交付结果**，不看 PR。另外要有人扫 `needs-human` 队列。
+真人只在两处投入（框架期验收骨架、框架后只看交付结果），理由见 `SKILL.md`「真人的位置」。另外要有人扫 `needs-human` 队列。
 
 ## 6. 驱动方式
 

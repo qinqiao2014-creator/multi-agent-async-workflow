@@ -41,7 +41,7 @@ description: 多 Agent 异步协同工作流。两类场景使用：(1) 你被�
 
 ## 任务来源与执行者
 
-标签集里另有一组**来源标签**，用来回答「这个任务是谁提的、该谁执行」。来源决定执行者，不要把两种任务混在一个池子里抢：
+来源标签回答「这个任务是谁提的、该谁执行」。来源决定执行者，不要把两种任务混在一个池子里抢：
 
 | 来源标签 | 含义 | 认领者 | 交付与验收 |
 |----------|------|--------|-----------|
@@ -49,28 +49,13 @@ description: 多 Agent 异步协同工作流。两类场景使用：(1) 你被�
 | `source:ai` | AI 提出的工程任务 | **Agent** | Agent 认领、Agent 交叉审核 |
 | `human-only` | 执行到此需先找人类拍板 | **Agent 认领前须先经人类确认** | 涉及主观判断的环节必须转交人类 |
 
-规则：
-
-- **`source:human` / `human-only` 不是「禁止 Agent 认领」，是「认领前必须先问人类、并且把话说白」。**
-  Agent 遇到这两类任务时**必须做三件事**：
-  1. **先问人类** —— 讲清任务内容、为什么需要人类、要人类做什么，等人类点头；
-  2. **明确告知人类**：**这项需要人类来完成「接活」与「验收」** —— 人类负责接下这件事并最终验收，Agent 不能替人类拍板；
-  3. **拿到确认后再认领** —— 人类确认前不得置 `in_progress`、不得交付、不得合并。
-- **AI 提的任务 → Agent 认领、Agent 交叉审核。** 仍受「不能审、不能合并自己写的代码」约束。
-- **⚠️ `ready` 是中性标签**（「待认领」），**不区分认领者是人还是 Agent** ⇒ 不要只看 `ready` 就伸手，必须同时看 `source:*`。
-- **`human-only` 是叠加约束**（与 `source:*` 并列，不是替代）：任务可做，但定稿权在人类。它表示「执行到此需先找人类拍板」：涉及审美、价值观、主观判断、不可由 Agent 单方定稿的环节，必须转交人类决定。与 `needs-human` 的区别是：`needs-human` 是整件事必须真人决定（花钱 / 对外承诺 / 法律权限 / 业务方向），`human-only` 是任务可做、但某一步的定稿权在人类。
+- **`source:human` / `human-only` 不是「禁止 Agent 认领」，是「认领前必须先问人类、并且把话说白」。** 遇到这两类任务必须做三件事：① **先问人类**（讲清任务内容、为什么需要人类、要人类做什么，等人类点头）；② **明确告知人类这项需要人类来完成「接活」与「验收」**——人类负责接下并最终验收，Agent 不能替人类拍板；③ **拿到确认后再认领**（确认前不得置 `in_progress`、不得交付、不得合并）。
+- **⚠️ `ready` 是中性标签**（「待认领」），不区分认领者是人还是 Agent ⇒ 不要只看 `ready` 就伸手，必须同时看 `source:*`。
+- **`human-only` 是叠加约束**（与 `source:*` 并列，不是替代）：任务可做，但定稿权在人类。与 `needs-human` 的区别：`needs-human` 是整件事必须真人决定（花钱 / 对外承诺 / 法律权限 / 业务方向），`human-only` 是任务可做、但某一步的定稿权在人类（审美、价值观等主观判断）。
 
 ## 角色兼任与合并权
 
-**review 权和合并权默认都在总负责人手上。** 拆出独立的 Reviewer 不是架构要求，而是总负责人的一次**任命**——任命了就归被任命者判，没任命就自己判。
-
-```
-总负责人（默认握有全部权限）
-  ├── 未任命 → 自己定规格、自己验收、自己决定合并
-  └── 任命了 review 负责人 → 由被任命者判定是否达标，总负责人仍持合并权
-```
-
-节点数少于角色数是正常配置，不是妥协。角色可以兼任，只有一条不能破：
+**review 权和合并权默认都在总负责人手上。** 拆出独立的 Reviewer 不是架构要求，而是总负责人的一次**任命**——任命了就归被任命者判，没任命就自己判。**节点数少于角色数是正常配置，不是妥协。**
 
 | 兼任 | 是否允许 |
 |------|---------|
@@ -79,11 +64,64 @@ description: 多 Agent 异步协同工作流。两类场景使用：(1) 你被�
 | Executor + Integrator（合并自己的 PR） | ❌ 同上，属于自批 |
 | Executor-A 审 Executor-B 的 PR | ✅ 互审没问题 |
 
-「不能自审」约束的是**代码作者**，不是规格作者。总负责人定了验收标准又去 review 实现，这不叫自证——那是 ownership，人类工程里开 ticket 的 tech lead 来审来合本来就是主流做法。
+「不能自审」约束的是**代码作者**，不是规格作者——定规格的人审实现属于 ownership，不是自证。
 
-### 任命的表达方式
+**全兼任的代价**：总负责人同时定规格、验收、合并时，**它自己的误解会系统性地传下去且无人能拦**（误解需求 → 写进验收标准 → Executor 照做 → 用同一个误解去验收 → 通过 → 合并）。Executor 拦不住（只负责符合规格），CI 也拦不住（代码没 bug）。两个补偿：给 Reviewer **质疑规格的权力**、**真人分两阶段介入**。想**跨模型交叉验证**（同模型容易犯同样的错）或总负责人成了吞吐瓶颈时，任命独立 Reviewer。
 
-任命必须**写在工件上**，否则被任命者下一轮不知道自己有这个权。每个可执行 Issue 至少写：`指定执行者：<Agent 实例>`、`审核负责人：<Agent 实例>`、`集成负责人：<Agent 实例>`。这些是用户任命的 Agent 标识，例如 `WorkBuddy`、`Codex`、`Claude Code`，不是 GitHub 用户名；也可在总线 repo 的 README / 置顶 Issue 里声明常任分工。口头说过等于没说。
+### 合并权归总负责人
+
+**Executor 提 PR，但对合并没有任何决定权。** 即使 review 通过，仍由总负责人决定：**哪些 PR 能进**（包括「代码没错但基于已废弃架构，不该合」）、**按什么顺序进**（文件范围重叠时裁决谁先合谁 rebase——**不要让 Executor 自行协商**，它们看不见彼此的上下文）、**是否只择取部分内容**（旧 PR 有可复用内容时，关掉它开新 Issue 写明「从 PR #N 摘取 xxx」）。
+
+Executor 侧对应禁令：不合并任何 PR（含自己的）、不推 main、不 force push。
+
+## 真人的位置：只看两样东西
+
+真人不看 PR、不看 diff、不做 code review。只在两个地方投入：
+
+| 阶段 | 真人看什么 | 为什么必须是这里 |
+|------|-----------|----------------|
+| **① 底层框架期** | 骨架本身：架构选型、目录结构、技术栈、数据模型、接口契约、CI 基线 | 框架的错会被之后**每个任务继承**，且**抽查交付结果发现不了**——每个交付相对于错框架都是"正确"的。这是唯一必须逐项过目的阶段 |
+| **② 框架验收后** | 只看交付结果：做出来的东西是不是要的东西 | 框架固定后，单个任务的偏差**会体现在结果上**，抽查就够了。此时看 PR 是浪费——那是总负责人的职责 |
+
+**框架通过真人验收之前，Planner 不放新功能 Issue**，只放骨架相关的任务。理由是复利方向：框架期的一个错误决定，会以后续每个任务为倍数放大；而这个阶段又恰恰是唯一能廉价改正的时候。
+
+对应地，接手一个已经跑起来但框架有问题的项目：**先停止派发新功能，把存量 Issue / PR 按新框架重新分类（继续 / 关闭替代 / 已完成 / 待重写），骨架验收通过后再恢复派发。**
+
+## 认领协议
+
+多个同角色节点、用户和总负责人可能同时看到同一个 Issue。GitHub 没有跨 comment、label、assignee 的事务，因此认领使用可恢复的**两阶段协议**。每次尝试生成唯一 `claim-id=<Agent实例>-<UTC时间>-<随机后缀>`，所有状态都用新 comment 追加，**禁止编辑或删除旧 comment**：
+
+```bash
+gh issue comment <n> --body "🔒 claim-id=<id>; state=pending; actor=<Agent实例>; lease-until=<UTC>; activation-grace-until=<UTC>"
+gh issue view <n> --json labels,assignees,comments   # 竞选：最早的未过期 pending 胜出
+gh issue edit <n> --add-assignee @me --add-label in_progress --remove-label ready
+gh issue comment <n> --body "🔒 claim-id=<id>; state=active; actor=<Agent实例>; lease-until=<UTC>"
+gh issue view <n> --json labels,assignees,comments   # active 可见后才派 Agent
+```
+
+状态机是 `pending -> active`，pending 或 active 都可进入终态 `failed/abandoned`，终态不可重新激活；同一 claim-id 按时间顺序折叠最新合法事件。默认上限：pending 10 分钟、activation grace 2 分钟、active 2 小时（项目可明确覆盖，超出按上限计）。active 执行者在到期前追加新的 `state=active` 续租。
+
+- **竞争 loser**：只追加自己 claim 的 `state=abandoned reason=lost-race` 并停止，**绝不移除共享 `ready/in_progress`，也不移除 winner 的 assignee**。
+- **派发失败**：追加 `claim-id=<id>; state=abandoned; reason=dispatch-failed`，再按恢复规则清理状态。
+- **每轮扫描不只扫 `ready`，还扫 `in_progress`**：`in_progress` 只有 pending 而没有 active 是 winner 的合法激活窗口，scanner 不得立即清理；只有 pending lease 和 activation grace 都到期后，**连续两次重读**仍无 active、Issue 仍匹配该 claim，才追加 `failed reason=activation-interrupted`。**任何清理和接管前后都重读 Issue；无法证明状态归属时转 `needs-lead`，不得猜。**
+
+> 完整的状态机、竞选裁决、回收与接管规则（含迟到写冲突处理）见 `references/dependency-propagation.md` 第 2 节。处理认领冲突时必须读它。
+
+---
+
+## 你是总负责人
+
+默认形态：你同时是 Planner、Reviewer、Integrator。按顺序读这三节执行，外加以下只属于你的职责。
+
+**独有职责**
+
+1. **任命与授权**：决定执行、审核和集成由哪些 Agent 实例承担。任命必须**写在工件上**（Issue 里写 `指定执行者` + `审核负责人` + `集成负责人`，或在总线 repo 置顶 Issue 声明常任分工）。这些是**用户任命的 Agent 实例标识**（如 `WorkBuddy`、`Codex`），不是 GitHub 用户名。口头说过等于没说。
+2. **裁决 `needs-lead`**：分歧在规格、优先级、技术方案上的，你拍板。这是你的活，别往真人那儿推。
+3. **持合并权**：见「合并权归总负责人」。
+4. **守框架闸门**：真人验收框架之前，不放新功能 Issue。
+5. **认识自己的盲区**：你定规格又验收，误解会无人拦阻地传下去。反复返工、同类打回时**先怀疑自己的规格**，而不是实施质量。
+6. **主动补齐执行者**：每轮先扫描 `in_progress` 和 `ready` 的 claim lifecycle，按认领协议恢复失效 claim，再激活新 claim（active 可见后才启动 Agent）。
+7. **主持依赖传播**：shared invariant 修复或变更后，按 `references/dependency-propagation.md` 建立传播矩阵，覆盖 open、closed、`done` 的直接/间接依赖、关联 open PR 和已交付 artifact；受影响的已交付物另开回归 Issue。无法可靠枚举时打 `needs-lead` 并保留下游合并阻断。
 
 ### 指定执行者 = 编排，不是认领
 
@@ -97,102 +135,11 @@ description: 多 Agent 异步协同工作流。两类场景使用：(1) 你被�
 - **`ready` / `in_progress` / `assignee` 三者正交**：`ready`=待认领，`in_progress`=实施中，`assignee`=归属。
 - 指定后**保留 `ready`**（被指定者尚未动工），**不要因为「已指定」就置 `in_progress`** —— 那是被指定者认领后自己置的。
 - 指定**不豁免** claim 协议：被指定者仍走 `pending → active`。指定的作用是**减少认领竞争**（他人见 `assignee` 不抢），不是替代认领。
-- 工件里写 **Agent 实例名**（如 `Executor-A`），而 `assignee` 只能填 **GitHub 账号**（如 `alice`）⇒ **两个都记**，写明「账号 X 的实例 Y」，别让下游把账号当成实例。
-
-**指定谁，决定要不要补告知义务**（`source:human` / `human-only` 专用）：
-
-| 被指定者 | 还需「先经人类确认 + 告知人类接活/验收」吗 |
-|---------|------------------------------------------|
-| **真人**（本人账号） | ❌ 可省 —— 指派即代表**真人已拍板接活**，义务由其本人天然履行 |
-| **纯 Agent 账号**（背后无真人） | ✅ **仍须** —— Agent 不能替人类拍板，必须补足告知与确认 |
-
-> 别只看 `gh issue edit --add-assignee` 成功就以为义务已尽 —— **先判被指定者是不是真人**。
-
-### 合并权归总负责人
-
-**Executor 提 PR，但对合并没有任何决定权。** 即使 review 通过了，也由总负责人决定：
-
-1. **哪些 PR 可以进**——包括「代码本身没错，但基于已废弃的架构，所以不该合」这类判断
-2. **按什么顺序进**——多个 PR 文件范围重叠时由总负责人裁决谁先合、谁去 rebase。**不要让 Executor 自行协商**，它们互相看不见彼此的上下文
-3. **是否只择取部分内容**——旧 PR 里有可复用的东西时，关掉 PR 并开新 Issue 写明「从 PR #N 摘取 xxx」，而不是硬合
-
-Executor 侧对应的禁令：不合并任何 PR（含自己的）、不推 main、不 force push。
-
-### 全兼任的代价（必须知道自己在换什么）
-
-总负责人同时定规格、验收、合并时，**它自己的误解会系统性地传下去且无人能拦**：
-
-```
-误解需求 → 写进验收标准 → Executor 照做 → 用同一个误解去验收 → 通过 → 合并
-```
-
-Executor 拦不住（它只负责符合规格），CI 也拦不住（代码没 bug）。这条链上没有任何一环能发现「做出来的东西不是要的东西」。
-
-两个补偿手段：
-
-- **任命 review 负责人时，明确给它质疑规格的权力**（详见 Reviewer 章节）
-- **真人分两阶段介入**（见下节）——这是唯一能拦住上面那条链的办法
-
-什么时候值得任命独立 Reviewer：想要**跨模型交叉验证**（换一家的模型审，同模型容易犯同样的错），或总负责人自己成了吞吐瓶颈。
-
-## 真人的位置：只看两样东西
-
-真人不看 PR、不看 diff、不做 code review。只在两个地方投入：
-
-| 阶段 | 真人看什么 | 为什么必须是这里 |
-|------|-----------|----------------|
-| **① 底层框架期** | 骨架本身：架构选型、目录结构、技术栈、数据模型、接口契约、CI 基线 | 框架的错会被之后**每个任务继承**，且**抽查交付结果发现不了**——每个交付相对于错框架都是"正确"的。这是唯一必须逐项过目的阶段 |
-| **② 框架验收后** | 只看交付结果：做出来的东西是不是要的东西 | 框架固定后，单个任务的偏差**会体现在结果上**，抽查就够了。此时看 PR 是浪费——那是总负责人的职责 |
-
-### 框架未验收前的硬约束
-
-**框架通过真人验收之前，Planner 不放新功能 Issue。** 只放骨架相关的任务。
-
-理由是复利方向：框架期的一个错误决定，会以后续每个任务为倍数放大；而这个阶段又恰恰是唯一能廉价改正的时候——一旦上面堆了二十个功能，改框架的成本就从「改一次」变成「改二十一次」。
-
-对应地，如果你接手一个已经跑起来但框架有问题的项目：**先停止派发新功能，把存量 Issue / PR 按新框架重新分类（继续 / 关闭替代 / 已完成 / 待重写），骨架验收通过后再恢复派发。**
-
-## 认领协议
-
-多个同角色节点、用户和总负责人可能同时看到同一个 Issue。GitHub 没有跨 comment、label、assignee 的事务，因此认领使用可恢复的两阶段协议。每次尝试生成唯一 `claim-id=<Agent实例>-<UTC时间>-<随机后缀>`，所有状态都用新 comment 追加，禁止编辑或删除旧 comment：
-
-```bash
-gh issue comment <n> --body "🔒 claim-id=<id>; state=pending; actor=<Agent实例>; lease-until=<UTC>; activation-grace-until=<UTC>"
-gh issue view <n> --json labels,assignees,comments   # 竞选：最早的未过期 pending 胜出
-gh issue edit <n> --add-assignee @me --add-label in_progress --remove-label ready
-gh issue comment <n> --body "🔒 claim-id=<id>; state=active; actor=<Agent实例>; lease-until=<UTC>"
-gh issue view <n> --json labels,assignees,comments   # active 可见后才派 Agent
-```
-
-claim 状态机是 `pending -> active`，pending 或 active 都可进入 `failed/abandoned`，终态不可重新激活；同一 claim-id 按时间顺序折叠最新合法事件，终态后的事件属于协议冲突，不能复活旧 claim。竞争 loser 只追加自己 claim 的 `state=abandoned reason=lost-race` 并停止，绝不移除共享 `ready/in_progress`，也不移除 winner 的 assignee；只有能证明某 assignee 由 loser 独占且 winner 不需要时才可清理该 assignee。派发失败必须追加 `claim-id=<id>; state=abandoned; reason=dispatch-failed`，再由恢复规则清理状态。每个 pending/active comment 必须带 `lease-until`，pending 还必须带 `activation-grace-until`；默认上限为 pending 10 分钟、activation grace 2 分钟、active 2 小时，项目可明确覆盖，超出上限按上限计算。active 执行者在到期前追加新的 `state=active` 续租。过期且无后续续租的 claim 可由扫描者追加 `abandoned reason=lease-expired` 后接管；原 Agent 恢复时必须重读，发现自己不再 active 就停止。
-
-每轮不仅扫描 `ready`，还扫描 `in_progress`。`in_progress` 只有 pending 而没有 active 是 winner 的合法激活窗口，scanner 不得立即清理；只有 pending lease 和 activation grace 都到期后，连续两次重读仍无 active、Issue 仍匹配该 claim 的阶段二状态，才追加带第二次读取 comment ID 的 `failed reason=activation-interrupted`。写后第三次重读若发现该快照之后出现 active，或 active 在 pending 终结后才写入，都是迟到写冲突：转 `needs-lead` 且不清任何状态；否则才按恢复规则回滚。也要回收 active lease 已过期的 `in_progress`，以及只有过期/终态 claim 的 `ready` 残留。任何清理和接管前后都重读 Issue；无法证明状态归属时转 `needs-lead`，不得猜。完整恢复和竞争规则见 `references/dependency-propagation.md`。
-
-共享依赖的完整传播事务见 `references/dependency-propagation.md`。处理 shared invariant、阶段基线或受上游变化影响的 Issue / PR 时必须读取它。
-
-传播矩阵统一使用以下 schema：
-
-| 传播源 | 目标 | 依赖路径 | 受影响组件 | 阻断前状态 | 当前 artifact | 关联 open PR | inherited gate | 证据 | 同步状态 |
-|--------|------|----------|------------|------------|-----------------|--------------|----------------|------|----------|
-| `[#source / PR]` | `[#target / PR / regression Issue]` | `[#source -> #target]` | `[component]` | `[ready/in_progress/needs-review/approved/未阻断]` | `[branch@sha / build digest]` | `[PR #... / 无]` | `[G-id / not-applicable]` | `[URL/path + SHA / pending]` | `pending/synced/unknown/not-applicable` |
-
----
-
-## 你是总负责人
-
-默认形态：你同时是 Planner、Reviewer、Integrator。按顺序读这三节执行，外加以下只属于你的职责。
-
-**独有职责**
-
-1. **任命与授权**：决定执行、审核和集成由哪些 Agent 实例承担。任命必须写在工件上（Issue 里写三类负责人，或总线 repo 置顶 Issue 声明常任分工），不能把 GitHub 用户名当成 Agent 身份。
-2. **裁决 `needs-lead`**：分歧在规格、优先级、技术方案上的，你拍板。这是你的活，别往真人那儿推。
-3. **持合并权**：即使 review 通过，进不进、什么顺序进、是否只择取部分内容，由你定（见「合并权归总负责人」）。
-4. **守框架闸门**：真人验收框架之前，不放新功能 Issue。
-5. **认识自己的盲区**：你定规格又验收，误解会无人拦阻地传下去。反复返工、同类打回时**先怀疑自己的规格**，而不是实施质量。
-6. **主动补齐执行者**：每轮先扫描 `in_progress` 和 `ready` 的 claim lifecycle。pending 在 activation grace 结束前保持合法且不得回收；grace 到期后也须双重重读仍无 active、状态仍匹配才能终结和清理。failed / abandoned 只作历史。完成恢复后，再按两阶段协议激活新 claim，active 可见后才启动 Agent。
-7. **主持依赖传播**：shared invariant 修复或变更后，按 `references/dependency-propagation.md` 建立传播矩阵，覆盖 open、closed、`done` 的直接/间接依赖、关联 open PR 和已交付 artifact；受影响的已交付物另开回归 Issue。无法可靠枚举时打 `needs-lead` 并保留下游合并阻断，不能宣称矩阵已验证或同步完成。
+- `assignee` 只能填 **GitHub 账号**，而工件里写 **Agent 实例名** ⇒ **两个都记**（写明「账号 X 的实例 Y」），别让下游把账号当成实例。
+- **`source:human` / `human-only` 下，指定谁决定要不要补告知义务**：被指定者是**真人**（本人账号）⇒ 指派即代表**真人已拍板接活**，**可省**「先经人类确认 + 告知接活/验收」；是**纯 Agent 账号**（背后无真人）⇒ **仍须**补足该义务。**别只看 `--add-assignee` 成功就以为义务已尽 —— 先判被指定者是不是真人。**
 
 **扫描**
+
 ```bash
 gh issue list --label needs-lead --state open      # 待你裁决的，优先
 gh issue list --label needs-review --state open    # 待审核
@@ -206,16 +153,9 @@ gh issue list --label backlog --state open         # 然后才是产新任务
 处理顺序是固定的：**先清裁决和合并，再产新任务。** 反过来会让队列越积越长——你是唯一的出口，堵住出口去灌入口只会更糟。
 
 **禁止**
-- **自己去实施你定的 Issue**（写了代码就不能再审它）。这是最常见的越界形态：你拆完 Issue 后
-  「顺手」把它领掉自己写 —— 那就成了**自己定规格 → 自己实施 → 自己审**，独立性设计整个失效，
-  且你的误解会**系统性地传下去且无人能拦**。
-  ⇒ 正确姿势：拆完就**交出去**（`ready` 等认领，或**指定执行者**交给别人），你去做自己该做的
-  —— 清 `needs-lead` 裁决、审 PR、管合并、扫队列、回收失效 claim。
-  ⇒ **不要问「要不要我顺手把这个领掉」** —— 那是抢执行活。
-  ⇒ **唯一例外：你安排子 Agent / 其他实例去做。** 禁止的是**你本人**去写，不是禁止这件事被推进 ——
-  「自己定规格 → 自己实施 → 自己审」的独立性失效，前提是**同一个实例**包办三段；
-  你把执行**派给另一个实例**（`指定执行者`），三段就落在不同实例上，独立性成立。
-  **派工 ≠ 越界，亲自下手才是。**
+
+- **自己去实施你定的 Issue**（写了代码就不能再审它）——拆完「顺手」把它领掉自己写，就成了自己定规格 → 自己实施 → 自己审，独立性设计整个失效，误解系统性传下去且无人能拦。⇒ 拆完就**交出去**（等认领或指定执行者）；**不要问「要不要我顺手把这个领掉」**——那是抢执行活。
+  **唯一例外：派给子 Agent / 其他实例。** 禁止的是**你本人**去写——把执行派给另一个实例（`指定执行者`），三段就落在不同实例上，独立性成立。**派工 ≠ 越界，亲自下手才是。**
 - 替真人做决定：花钱、对外承诺、法律权限、业务方向 → `needs-human`
 - 框架未验收就派发新功能
 
@@ -224,6 +164,7 @@ gh issue list --label backlog --state open         # 然后才是产新任务
 ## 你是 Planner
 
 **扫描**
+
 ```bash
 gh issue list --label backlog --state open
 ```
@@ -232,9 +173,9 @@ gh issue list --label backlog --state open
 1. 把模糊需求拆成独立 Issue，粒度控制在 **1-2 小时可完成**（拆不动说明还没想清）
 2. 读相关代码，在 Issue 里写清 `涉及范围`（具体文件），这是下游避免冲突的依据
 3. 套用 `assets/issue-template.md`，**验收标准必须可判定**——「性能更好」不行，「P99 < 200ms」才行
-4. 标注直接依赖、受影响组件和 artifact 身份；从所有直接与间接上游累计继承仍适用的回归 gate，不得只抄最近一层依赖
-5. 若上游修复 shared invariant，建立并维护传播矩阵；枚举 open、closed、`done` 下游及 open PR，为受影响已交付物开回归 Issue，未同步活动下游保持合并阻断
-6. 标注优先级；预分配执行者（填 `指定执行者` + 若可则加 `assignee`）可以减少认领竞争，但真正认领仍以 Issue 中未过期 active claim 和 `in_progress` 为准（**指定 ≠ 认领**，见「指定执行者 = 编排，不是认领」）
+4. 标注直接依赖、受影响组件和 artifact 身份；从所有直接与间接上游累计继承仍适用的回归 gate
+5. 若上游修复 shared invariant，建立并维护传播矩阵；枚举 open、closed、`done` 下游及 open PR，为受影响已交付物开回归 Issue
+6. 标注优先级；预分配执行者（填 `指定执行者`，若可则加 `assignee`）可减少认领竞争，但真正认领仍以未过期 active claim 和 `in_progress` 为准（**指定 ≠ 认领**）
 7. 置 `ready` 交出
 
 **禁止**
@@ -249,6 +190,7 @@ gh issue list --label backlog --state open
 ## 你是 Researcher
 
 **扫描**
+
 ```bash
 gh issue list --label needs-research --state open
 ```
@@ -268,6 +210,7 @@ gh issue list --label needs-research --state open
 ## 你是 Executor
 
 **扫描**（含被打回退回来的）
+
 ```bash
 gh issue list --assignee @me --label in_progress --state open
 gh issue list --label ready --state open        # 无人认领的
@@ -280,6 +223,7 @@ gh issue list --label ready --state open        # 无人认领的
 4. 在**当前 PR head artifact** 上执行本 Issue 自身验收和全部适用 inherited gates；历史候选证据只能作背景，不能代替本次结果
 5. 自测通过后提 PR，套用 `assets/pr-template.md`，**body 必须写 `Closes #<issue号>`**（Reviewer 靠它反查契约，缺了 PR 就是无从判定的 diff）
 6. 收尾**两件事缺一不可**：
+
 ```bash
 gh pr create --title "..." --body "Closes #128\n\n..."
 gh issue comment 128 --body "✅ 已提交 PR #256"
@@ -301,6 +245,7 @@ gh issue edit 128 --add-label needs-review --remove-label in_progress
 **前提**：你必须不是这个 PR 的**代码作者**。是自己写的就停下，交给别人。（定规格的人来审不违反此约束——见「角色兼任与合并权」。）
 
 **扫描**
+
 ```bash
 gh issue list --label needs-review --state open
 gh pr view <n> --json body,files,statusCheckRollup   # 反查关联 Issue、看 CI
@@ -309,9 +254,9 @@ gh pr view <n> --json body,files,statusCheckRollup   # 反查关联 Issue、看 
 **动作**
 1. PR 没写 `Closes #<issue>` → 直接打回，不进入审查（无契约不可判定）
 2. CI 红 → 打回，不浪费一轮人工审查
-3. 读 Issue 的验收标准和“非目标 / 禁止事项”，**逐文件对着 diff 判**：每个变更文件都必须落在 `涉及范围` 内；越界内容必须删除、拆成新 Issue，或由总负责人先更新契约，不能以“顺手做了”通过。
-4. 检查依赖传播矩阵、当前 artifact 身份和 inherited gates。审核源 shared-invariant PR 时，矩阵影响面已可靠枚举、逐目标行已建立且无 `unknown` 即可继续审批，未同步下游只阻断对应下游，不反向阻塞源 PR。审核下游 PR 时，其矩阵行未同步、上游有未纳入当前 head 的新提交或证据属于旧 artifact，先记录阻断前状态再置 `blocked`；不得批准。
-5. 通过 → 写明审核主体的 `👍 审核通过，可以合并`，Issue 从 `needs-review` 转为 `approved`。Reviewer 不得把 Issue 置 `done`。
+3. 读 Issue 的验收标准和「非目标 / 禁止事项」，**逐文件对着 diff 判**：每个变更文件都必须落在 `涉及范围` 内；越界内容必须删除、拆成新 Issue，或由总负责人先更新契约，不能以「顺手做了」通过
+4. 检查依赖传播矩阵、当前 artifact 身份和 inherited gates。审核源 shared-invariant PR 时，矩阵影响面已可靠枚举、逐目标行已建立且无 `unknown` 即可继续审批，未同步下游只阻断对应下游，不反向阻塞源 PR；审核下游 PR 时，其矩阵行未同步、上游有未纳入当前 head 的新提交或证据属于旧 artifact，先记录阻断前状态再置 `blocked`，不得批准
+5. 通过 → 写明审核主体的 `👍 审核通过，可以合并`，Issue 从 `needs-review` 转为 `approved`。**Reviewer 不得把 Issue 置 `done`。**
 6. 打回 → comment **具体到文件和行**：`🚫 打回（第 N 次）：xxx`，Issue 退回 `in_progress`，PR 保持 open
 
 **打回的判据是「问题在不在这个 diff 里」，不是「验收标准有没有写」**
@@ -337,6 +282,7 @@ gh pr view <n> --json body,files,statusCheckRollup   # 反查关联 Issue、看 
 ## 你是 Integrator
 
 **扫描**
+
 ```bash
 gh issue list --label approved --state open
 gh pr list --state open
@@ -344,7 +290,7 @@ gh pr list --state open
 
 **动作**
 1. 为每个 `approved` Issue 反查关联 PR；确认 PR body 有 `Closes #<issue>`、审核记录、CI 绿，且 PR 不是集成者自己实现的。
-2. **依赖传播闸门**：源 shared-invariant PR 的影响面和逐目标矩阵已可靠建立且没有 `unknown`，即可继续合并，`pending` 下游不得反向卡住源 PR。下游 PR 则必须确认所有直接/间接上游 shared invariant 已映射到 inherited gates，且自身矩阵行没有 `pending/unknown`；未完成时先记录阻断前状态，再移除其他活动标签、置 `blocked`。某行一旦达到 `synced/not-applicable`，立即只恢复该目标记录的状态，不等待其他行；状态缺失、非法或已过期则转 `needs-lead`。
+2. **依赖传播闸门**：源 shared-invariant PR 的影响面和逐目标矩阵已可靠建立且没有 `unknown`，即可继续合并，`pending` 下游不得反向卡住源 PR。下游 PR 则必须确认所有直接/间接上游 shared invariant 已映射到 inherited gates，且自身矩阵行没有 `pending/unknown`；未完成时先记录阻断前状态，再移除其他活动标签、置 `blocked`。某行一旦达到 `synced/not-applicable`，立即只恢复该目标记录的状态，不等待其他行。
 3. **合并新鲜度闸门**：合并前记录当前 `main` SHA 和 PR head SHA；用 GitHub API/CLI 确认 `mergeable = MERGEABLE` 且合并状态为 clean。若 `main` 在 PR 创建或审核后前进，必须在更新后的分支或合并结果上重跑受影响验证；不满足则退回 Executor rebase/解决冲突，不要自行硬解。
 4. 合并后拉取 `main`，确认 PR 已 merged，并在**合并后的当前 artifact** 上运行 Issue 自身验证、全部适用 inherited gates，以及必要的集成 / E2E 测试。
 5. 通过 → 关闭 Issue，移除 `in_progress`、`needs-review`、`approved`、`blocked` 等活动标签，添加 `done`；comment 记录 PR 编号、artifact 身份、main commit SHA、验证命令和结果。
@@ -377,4 +323,4 @@ gh pr list --state open
 | `references/dependency-propagation.md` | shared invariant 的依赖传播、累计回归 gate 与唯一认领协议 |
 | `references/setup.md` | 从零搭总线（建 label、配模板、编排节点） |
 | `references/rationale.md` | 为什么这么设计、为什么不用共享上下文的 agent team |
-| `references/best-practices.md` | 落地检查清单与 15 个坑 |
+| `references/best-practices.md` | 落地检查清单与常见坑 |
